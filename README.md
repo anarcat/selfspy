@@ -43,8 +43,6 @@ sudo make config-recursive && sudo make install clean
 ```
 
 
-There is also a simple Makefile. Run `make install` as root/sudo, to install the files in /var/lib/selfspy and also create the symlinks /usr/bin/selfspy and /usr/bin/selfstats.
-
 Report issues here:
 https://github.com/gurgeh/selfspy/issues
 

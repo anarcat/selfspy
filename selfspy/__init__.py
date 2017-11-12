@@ -35,6 +35,32 @@ from selfspy import check_password
 from selfspy import config as cfg
 
 
+class NegateAction(argparse.Action):
+    '''add a toggle flag to argparse
+
+    this is similar to 'store_true' or 'store_false', but allows
+    arguments prefixed with --no to disable the default. the default
+    is set depending on the first argument - if it starts with the
+    negative form (defined by default as '--no'), the default is False,
+    otherwise True.
+
+    originally written for the stressant project.
+    '''
+
+    negative = '--no'
+
+    def __init__(self, option_strings, *args, **kwargs):
+        '''set default depending on the first argument'''
+        default = not option_strings[0].startswith(self.negative)
+        super(NegateAction, self).__init__(option_strings, *args,
+                                           default=default, nargs=0, **kwargs)
+
+    def __call__(self, parser, ns, values, option):
+        '''set the truth value depending on whether
+        it starts with the negative form'''
+        setattr(ns, self.dest, not option.startswith(self.negative))
+
+
 def parse_config():
     conf_parser = argparse.ArgumentParser(description=__doc__, add_help=False,
                                           formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -60,7 +86,7 @@ def parse_config():
     parser.add_argument('-p', '--password', help='Encryption password. If you want to keep your database unencrypted, specify -p "" here. If you don\'t specify a password in the command line arguments or in a config file, a dialog will pop up, asking for the password. The most secure is to not use either command line or config file but instead type it in on startup.')
     parser.add_argument('-d', '--data-dir', help='Data directory for selfspy, where the database is stored. Remember that Selfspy must have read/write access. Default is %s' % cfg.DATA_DIR, default=cfg.DATA_DIR)
 
-    parser.add_argument('-n', '--no-text', action='store_true', help='Do not store what you type. This will make your database smaller and less sensitive to security breaches. Process name, window titles, window geometry, mouse clicks, number of keys pressed and key timings will still be stored, but not the actual letters. Key timings are stored to enable activity calculation in selfstats. If this switch is used, you will never be asked for password.')
+    parser.add_argument('--no-text', '-n', '-t', '--text', action=NegateAction, dest='text', help='Do not store what you type. This makes your database smaller and less sensitive to security breaches. Non-sensitive information like process name, window titles, window geometry, mouse clicks, number of keys pressed and key timings will still be stored, but not the actual letters. Key timings are stored to enable activity calculation in selfstats. The database is encrypted with a password only if keys are stored in the database. The default is to store only non-sensitive information, use -t or --text to store what you type.')
     parser.add_argument('-r', '--no-repeat', action='store_true', help='Do not store special characters as repeated characters.')
 
     parser.add_argument('--change-password', action="store_true", help='Change the password used to encrypt the keys columns and exit.')
@@ -82,7 +108,6 @@ def main():
     except EnvironmentError as e:
         print str(e)
         sys.exit(1)
-
     args['data_dir'] = os.path.expanduser(args['data_dir'])
 
     def check_with_encrypter(password):
@@ -97,12 +122,16 @@ def main():
     lockname = os.path.join(args['data_dir'], cfg.LOCK_FILE)
     cfg.LOCK = LockFile(lockname)
     if cfg.LOCK.is_locked():
-        print '%s is locked! I am probably already running.' % lockname
-        print 'If you can find no selfspy process running, it is a stale lock and you can safely remove it.'
-        print 'Shutting down.'
-        sys.exit(1)
+        if os.path.exists(lockname):
+            print '%s is locked! I am probably already running.' % lockname
+            print 'If you can find no selfspy process running, it is a stale lock and you can safely remove it.'
+            print 'Shutting down.'
+            sys.exit(1)
+        else:
+            print '%s is locked, but no PID file exists. breaking lock' % lockname
+            cfg.LOCK.break_lock()
 
-    if args['no_text']:
+    if not args['text']:
         args['password'] = ""
 
     if args['password'] is None:
@@ -120,7 +149,7 @@ def main():
         print 'Re-encrypting your keys...'
         astore = ActivityStore(os.path.join(args['data_dir'], cfg.DBNAME),
                                encrypter,
-                               store_text=(not args['no_text']),
+                               store_text=(args['text']),
                                repeat_char=(not args['no_repeat']))
         astore.change_password(new_encrypter)
         # delete the old password.digest
@@ -132,7 +161,7 @@ def main():
 
     astore = ActivityStore(os.path.join(args['data_dir'], cfg.DBNAME),
                            encrypter,
-                           store_text=(not args['no_text']),
+                           store_text=(args['text']),
                            repeat_char=(not args['no_repeat']))
     cfg.LOCK.acquire()
     try:
