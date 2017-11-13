@@ -97,10 +97,14 @@ def main():
     lockname = os.path.join(args['data_dir'], cfg.LOCK_FILE)
     cfg.LOCK = LockFile(lockname)
     if cfg.LOCK.is_locked():
-        print '%s is locked! I am probably already running.' % lockname
-        print 'If you can find no selfspy process running, it is a stale lock and you can safely remove it.'
-        print 'Shutting down.'
-        sys.exit(1)
+        if os.path.exists(lockname):
+            print('%s is locked! I am probably already running.' % lockname)
+            print('If you can find no selfspy process running, it is a stale lock and you can safely remove it.')
+            print('Shutting down.')
+            sys.exit(1)
+        else:
+            print('%s is locked, but no PID file exists. Breaking lock' % lockname)
+            cfg.LOCK.break_lock()
 
     if args['no_text']:
         args['password'] = ""
